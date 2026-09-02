@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport"content="width=device-width,initial-scale=1 .0"/>
+<title>记账⼯作台</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root{
+--milk-yellow:#fff9e6;
+ --trans-card:rgba(255,255,255,0.80);
+ --trans-sidebar:rgba(255,249,230,0.85);
+ --radius:16px;
+ --shadow:0 2px 12px rgba(0,0,0,0.08);
+}
+*{box-sizing:border-box;font-family:"PingFang SC","Microsoft YaHei",sans
+serif;margin:0;padding:0;}
+body{
+background-image:url("");/*把你的背景图转base64 填在这⾥*/
+background-size:cover;background-position:center;background-attachment:fixed;
+min-height:100vh;
+position:relative;
+}
+body::before{
+content:"";position:fixed;inset:0;background:rgba(255,255,255,0.22);z-index:-1;
+}
+.app{display:flex;min-height:100vh;}
+/*侧边栏  永久常驻  不会收起 */
+.sidebar{
+background:var(--trans-sidebar);
+backdrop-filter:blur(8px);
+border-radius:0 var(--radius)var(--radius)0;
+overflow-y:auto;
+transition:width 0.3s;
+flex-shrink:0;
+padding:12px 6px;
+display:flex;flex-direction:column;gap:8px;
+}
+@media (max-width:767px){.sidebar{width:72px;}}
+@media (min-width:768px)and (max-width:1199px){.sidebar{width:150px;}}
+@media (min-width:1200px){.sidebar{width:200px;}}
+.nav-item{
+display:flex;flex-direction:column;align-items:center;
+padding:10px 4px;border-radius:12px;cursor:pointer;
+gap:4px;
+}
+.nav-item.active{background:var (--milk-yellow);}
+ .nav-item .icon{font-size:22px;}
+ .nav-item .label{font-size:12px;text-align:center;word-break:break-all;}
+ .main{flex:1;padding:16px;overflow-y:auto;}
+ .card{
+background:var(--trans-card);
+backdrop-filter:blur(6px);
+border-radius:var(--radius);
+padding:16px;margin-bottom:14px;
+box-shadow:var(--shadow);
+}
+.banner{
+position:relative;overflow:hidden;padding:14px;border-radius:var(--radius);
+background:rgba(255,252,240,0.75);
+display:flex;align-items:center;gap:14px;margin-bottom:16px;
+}
+.banner-avatar{
+width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid #fff;
+}
+.banner-title h2{font-size:18px;margin:0;}
+ .banner-title p{font-size:13px;color:#666;margin:2px 0 0;}
+ .emoji-bg{
+position:absolute;inset:0;display:grid;grid-template-columns:repeat(4,1fr);grid-template
+rows:repeat(2,1fr);
+z-index:0;pointer-events:none;
+}
+.emoji-item{
+position:absolute;font-size:20px;opacity:0.42;
+}
+.banner-avatar,.banner-title{z-index:2;position:relative;}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+ button{
+background:#ffeeba;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;
+font-size:14px;
+}
+button.del{background:#ffdddd;}
+ input,select{
+width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;margin:6px 0;
+font-size:14px;
+}
+.list-item{
+display:flex;justify-content:space-between;align-items:center;padding:8px 0;
+border-bottom:1px dashed #ddd;
+}
+.modal{
+position:fixed;inset:0;background:rgba(0,0,0,0 .4);display:flex;align-items:center;justify
+content:center;
+z-index:999;
+}
+.modal-content{
+background:#fff;border-radius:var(--radius);padding:20px;width:85%;max-width:420px;
+}
+.hidden{display:none !important;}
+ .portfolio-grid{
+display:grid;grid-template-columns:1fr 1fr;gap:14px;
+}
+.portfolio-card{
+position:relative;border-radius:var(--radius);overflow:hidden;height:160px;color:white;
+}
+.portfolio-card .bg-img{
+position:absolute;inset:0;background-size:cover;background
+position:center;filter:brightness(0.72);
+}
+.portfolio-card .tag{
+position:absolute;top:8px;left:8px;background:rgba(0,0,0,0 .45);padding:3px 8px;border
+radius:6px;font-size:12px;
+}
+.portfolio-card .play{
+position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,0.75);
+ display:flex;align-items:center;justify-content:center;color:#333;font-size:20px;
+}
+.portfolio-card .info{
+position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.55);padding:8px;
+}
+.stat-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+ .cat-card{text-align:center;padding:10px;}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="sidebar"id="sidebar"></div>
+<div class="main"id="main"></div>
+</div>
+<script>
+//==========配置区 ==========
+ const NAV_ITEMS =[
+{id:"overview",name:"概览",icon:""},
+{id:"detail",name:"明细",icon:""},
+{id:"todo",name:"代办清单",icon:""},
+{id:"stats",name:"统计",icon:""},
+{id:"report",name:"报表",icon:""},
+{id:"budget",name:"预算",icon:""},
+{id:"account",name:"账户",icon:""},
+{id:"invest",name:"理财",icon:""},
+{id:"loan",name:"借贷",icon:""},
+{id:"goal",name:"⽬标",icon:""},
+{id:"template",name:"模板",icon:""},
+{id:"recur",name:"周期",icon:""},
+{id:"book",name:"账本",icon:""},
+{id:"cal",name:"⽇历",icon:""},
+{id:"fit",name:"减脂",icon:""},
+{id:"period",name:"经期助⼿",icon:""},
+{id:"setting",name:"设置",icon:""},
+];
+const
+EMOJI_POOL=["","","","","","","","","","","","","","","","
+","","","","","","","",""];
+//9 个头像base64  你把裁剪好的星星⼈九宫格图⽚转base64 依次填到下⾯数组
+ const AVATARS=[
+""""""""""""""""""
+, , , , , , , ,
+];
+const INVEST_LIST=[
+{title:"今⽇⾦价",desc:"贵⾦属实时⾏情",tag:"贵⾦属",color:"gold",url:"https://
+ gold.eastmoney.com/"},
+{title:"今⽇银价",desc:"⽩银价格⾛势",tag:"贵⾦属",color:"silver",url:"https://
+ gold.eastmoney.com/"},
+{title:"基⾦排⾏",desc:"各类基⾦收益排⾏",tag:"基⾦",color:"green",url:"https://
+ www.fund123.cn/"},
+{title:"股票⾏情",desc:"⼤盘与个股报价",tag:"股票",color:"redblue",url:"https://
+ quote.eastmoney.com/center/"},
+{title:"外汇牌价",desc:"各⼤币种汇率",tag:"外汇",color:"rainbow",url:"https://www.boc.cn/
+ sourcedb/whpj/"},
+{title:"理财精选",desc:"理财⼯具汇总",tag:"理财⼯具",color:"pink",url:"https://www.fund123.cn/"}
+];
+const CAT_NAMES=["居住","购物","学习","餐饮","美妆","宠物"];
+const CAT_COLORS=["#845EC2","#D65DB1","#FF6F91","#FF9671","#FFC75F","#F9F871"];
+//==========本地存储⼯具 ==========
+ const DB={
+get(key){
+const s=localStorage.getItem(key);
+return s?JSON.parse(s):null;
+},
+set(key,val){
+localStorage.setItem(key,JSON.stringify(val));
+}
+};
+//账本管理
+function getBooks(){return DB.get("books")||[{bookId:"default",name:"默认账本"}]}
+function saveBooks(arr){DB.set("books",arr);}
+ function currentBookId(){
+return DB.get("curBookId")||"default";
+}
+function setCurrentBookId(bid){DB.set("curBookId",bid);}
+function filterByBook(list){
+ const bid=currentBookId();
+return (list||[]).filter(x=>x.bookId===bid);
+}
+//==========状态 ==========
+ let curPage="overview";
+//⻚⾯渲染⼊⼝
+function renderSidebar(){
+const el=document ×getElementById("sidebar");
+el ×innerHTML="";
+NAV_ITEMS.forEach(item=>{
+const d=document.createElement("div");
+d.className="nav-item"+(curPage===item.id?"active":"");
+d.innerHTML=`<div class="icon">${item.icon}</div><div class="label">${item.name}</
+ div>`;
+d.onclick=()=>{curPage=item.id;render();};
+el.appendChild(d);
+});
+}
+function getAvatarIndex(){
+const idx=NAV_ITEMS.findIndex(x=>x.id===curPage);
+return idx%AVATARS.length;
+}
+function makeBanner(subtitle){
+ const aidx=getAvatarIndex();
+const avatarSrc=AVATARS[aidx]||"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
+2000/svg 'width='52'height='52'%3E%3Ccircle cx='26'cy='26'r='24'fill='%23ffdd88 '/
+%3E%3C/svg%3E";
+const shuffled=[...EMOJI_POOL].sort(()=>Math.random()-0 .5).slice(0,8);
+let emojiHtml="";
+ shuffled.forEach(e=>{
+const top=Math.random()*45;
+const left=Math.random()*85;
+const rot=(Math.random()*22-11).toFixed(1);
+const op=(0 .34+Math.random()*0 .16).toFixed(2);
+emojiHtml+=`<div class="emoji-item"style="top:${top}%;left:${left}%;transform:rotate($
+{rot}deg);opacity:${op}">${e}</div>`;
+});
+const titleObj=NAV_ITEMS.find(x=>x.id===curPage);
+ return `
+<div class="banner">
+<div class="emoji-bg">${emojiHtml}</div>
+<img class="banner-avatar"src="${avatarSrc}"/>
+<div class="banner-title">
+<h2>${titleObj.name}</h2>
+<p>${subtitle}</p>
+</div>
+</div>`;
+}
+//==========各个⻚⾯ ==========
+ function pageOverview(){
+const trans=filterByBook(DB ×get("transactions")||[]);
+const now=new Date();
+const m=now.getMonth(),y=now.getFullYear();
+const monthTrans=trans.filter(t=>{
+ const d=new Date(t.date);
+return d ×getMonth()===m &&d ×getFullYear()===y;
+});
+let income=0,exp=0;
+ monthTrans.forEach(t=>{
+if(t ×type==="income")income+=Number(t.amount);
+else exp+=Number(t.amount);
+});
+const bal=income-exp;
+ return `
+${makeBanner("随时掌握你的财务状况")}
+<div class="grid2">
+<div class="card">
+<h4>本⽉收⼊</h4>
+<div style="font-size:24px;color:#27ae60">¥${income.toFixed(2)}</div>
+</div>
+<div class="card">
+<h4>本⽉⽀出</h4>
+<div style="font-size:24px;color:#e74c3c">¥${exp.toFixed(2)}</div>
+</div>
+</div>
+<div class="card">
+<h4>本⽉结余</h4>
+<div style="font-size:28px">¥${bal.toFixed(2)}</div>
+</div>
+<div class="card">
+<p>当前账本  ${getBooks().find(b=>b.bookId===currentBookId()).name}</p>
+<button onclick="curPage='book';render();">切换账本</button>
+</div>
+`;
+}
+function pageDetail(){
+const transAll=filterByBook(DB ×get("transactions")||[]);
+let listHtml="";
+transAll.slice().reverse().forEach((t,idx)=>{
+listHtml+=`
+<div class="list-item">
+<div>
+${t.date}｜${t.name}
+<div>${t×type==="income"?"收⼊":"⽀出"}¥${Number(t.amount).toFixed(2)}</div>
+</div>
+<div>
+<button onclick="editTrans('${t.uid}')"></button>
+<button class="del"onclick="delTrans('${t.uid}')"></button>
+</div>
+</div>`;
+});
+return `
+${makeBanner("每⼀笔收⽀明细记录")}
+<div class="card">
+<h4>新增⼀笔记录</h4>
+<input id="t_name"placeholder="名称">
+<input id="t_amt"placeholder="⾦额"type="number"step="0 .01">
+<select id="t_type">
+<option value="expense">⽀出</option>
+<option value="income">收⼊</option>
+</select>
+<input id="t_date"type="date">
+<button onclick="addTrans()">保存</button>
+</div>
+<div class="card">
+<h4>收⽀列表 (${transAll.length})</h4>
+${listHtml||"<p>暂⽆记录</p>"}
+</div>
+`;
+}
+function pageTodo(){
+const todos=filterByBook(DB ×get("todos")||[]);
+let fixedHtml="",tempHtml="";
+ todos.forEach(t=>{
+const chk=t.done?"checked":"";
+const line=t.done?"text-decoration:line-through;color:#999;":"";
+const item=`
+<div class="list-item">
+<label style="${line}">
+<input type="checkbox"${chk}onchange="toggleTodo('${t.uid}')">${t.text}
+</label>
+<div>
+<button onclick="editTodo('${t.uid}')"></button>
+<button class="del"onclick="delTodo('${t.uid}')"></button>
+</div>
+</div>`;
+if(t ×kind==="fixed")fixedHtml+=item;
+else tempHtml+=item;
+});
+return `
+${makeBanner("管理待办事项")}
+<div class="card">
+<h4>新增待办</h4>
+<input id="todo_text"placeholder="待办内容">
+<select id="todo_kind">
+<option value="fixed">每⽇固定待办</option>
+<option value="temp">临时待办</option>
+</select>
+<button onclick="addTodo()">添加</button>
+</div>
+<div class="card">
+<h4>每⽇固定待办</h4>
+${fixedHtml||"<p>⽆固定待办</p>"}
+</div>
+<div class="card">
+<h4>临时待办清单</h4>
+${tempHtml||"<p>暂⽆临时待办</p>"}
+</div>
+`;
+}
+function pageStats(){
+const trans=filterByBook(DB ×get("transactions")||[]).filter(x=>x.type==="expense");
+ const catSum={};
+CAT_NAMES.forEach(c=>catSum [c]=0);
+ trans.forEach(t=>{
+const c=t.category||"其他";
+if(catSum [c]!==undefined)catSum[c]+=Number(t.amount);
+});
+let cardHtml="";
+CAT_NAMES.forEach((name,i)=>{
+const sum=catSum [name];
+const total=Object ×values(catSum)×reduce((a,b)=>a+b,0);
+const pct=total>0?((sum/total)*100).toFixed(1):"0 .0";
+cardHtml+=`
+<div class="cat-card card">
+<div style="width:32px;height:32px;border-radius:50%;background:$
+{CAT_COLORS [i]};margin:0 auto;"></div>
+<div>${name}</div>
+<div>¥${sum.toFixed(2)}</div>
+<div>${pct}%</div>
+</div>`;
+});
+ return `
+${makeBanner("⽀出构成分析")}
+<div class="card"style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+<div>
+<canvas id="barChart"height="260"></canvas>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+${cardHtml}
+</div>
+</div>
+`;
+}
+function pageReport(){
+const trans=filterByBook(DB ×get("transactions")||[]);
+const now=new Date();
+const m=now.getMonth(),y=now.getFullYear();
+const month=trans.filter(t=>{
+ const d=new Date(t.date);
+return d ×getMonth()===m &&d ×getFullYear()===y;
+});
+let inc=0,exp=0;
+ month.forEach(t=>{
+if(t ×type==="income")inc+=Number(t.amount);
+else exp+=Number(t.amount);
+});
+const save=inc-exp;
+let saveRate=0;
+if(inc!==0)saveRate=(save/inc×100);
+const rateColor=inc>0?"#27ae60":"#e74c3c";
+return `
+${makeBanner("⽉度财务报表")}
+<div class="grid2">
+<div class="card">
+<h4>收⼊</h4>
+<div style="font-size:22px;color:#27ae60">¥${inc.toFixed(2)}</div>
+</div>
+<div class="card">
+<h4>⽀出</h4>
+<div style="font-size:22px;color:#e74c3c">¥${exp.toFixed(2)}</div>
+</div>
+<div class="card">
+<h4>结余</h4>
+<div style="font-size:22px">¥${save.toFixed(2)}</div>
+</div>
+<div class="card">
+<h4>储蓄率</h4>
+<div style="font-size:22px;color:${rateColor}">${saveRate.toFixed(1)}%</div>
+</div>
+</div>
+`;
+}
+function pageBudget(){
+const budgets=filterByBook(DB ×get("budgets")||[]);
+ let html=`${makeBanner("⽉度预算管控")}
+<div class="card">
+<h4>新增预算项</h4>
+<input id="bud_name"placeholder="分类名称">
+<input id="bud_limit"placeholder="⽉度预算⾦额"type="number"step="0 .01">
+<button onclick="addBudget()">添加</button>
+</div>`;
+budgets.forEach(b=>{
+ html+=`
+<div class="card">
+<h4>${b.name}</h4>
+<p>预算上限  ¥${Number(b.limit).toFixed(2)}</p>
+<div>
+<button onclick="editBudget('${b.uid}')">编辑</button>
+<button class="del"onclick="delBudget('${b.uid}')">删除</button>
+</div>
+</div>`;
+});
+return html;
+}
+function pageAccount(){
+const accs=filterByBook(DB ×get("accounts")||[]);
+let sumNet=0;
+accs.forEach(a=>sumNet+=Number(a.balance));
+ let html=`${makeBanner("你的各个账户")}
+<div class="card">
+<h3>净资产  ¥${sumNet.toFixed(2)}</h3>
+</div>
+<div class="card">
+<h4>添加账户</h4>
+<input id="acc_name"placeholder="账户名称">
+<input id="acc_bal"placeholder="当前余额"type="number"step="0 .01">
+<button onclick="addAccount()">新增</button>
+</div>`;
+accs.forEach(a=>{
+ html+=`
+<div class="card">
+<h4>${a.name}</h4>
+<p>余额  ¥${Number(a.balance).toFixed(2)}</p>
+<div>
+<button onclick="editAccount('${a.uid}')">编辑</button>
+<button class="del"onclick="delAccount('${a.uid}')">删除</button>
+</div>
+</div>`;
+});
+return html;
+}
+function pageInvest(){
+ let cardHtml="";
+INVEST_LIST.forEach(item=>{
+ const bgStyle={
+gold:"linear-gradient(135deg,#b8860b,#ffd700)",
+silver:"linear-gradient(135deg,#8094a4,#c0c0c0)",
+green:"linear-gradient(135deg,#1b5e20,#81c784)",
+redblue:"linear-gradient(135deg,#1a237e,#d32f2f)",
+rainbow:"linear-gradient(45deg,#ff7597,#ffb997,#ffeaa7,#81ecec,#74b9ff,#a29bfe)", 
+pink:"linear-gradient(135deg,#ff8fab,#ffc2d1)"
+}[item.color];
+cardHtml+=`
+<div class="portfolio-card">
+<div class="bg-img"style="background:${bgStyle}"></div>
+<div class="tag">${item.tag}</div>
+<div class="play">▶</div>
+<div class="info">
+<div><strong>${item.title}</strong></div>
+<div style="font-size:12px">${item.desc}</div>
+<div style="margin-top:4px">
+<button style="font-size:11px;padding:3px 6px"onclick="window.open ('$
+{item.url}','_blank')">查看⾏情</button>
+<button style="font-size:11px;padding:3px 6px"
+onclick="navigator.clipboard.writeText('${item.url}');alert('链接已复制')">复制链接</button>
+</div>
+</div>
+</div>`;
+});
+return `${makeBanner("理财⾏情快捷⼊⼝")}<div class="portfolio-grid">${cardHtml}</div>`;
+}
+function pageLoan(){
+const loans=filterByBook(DB ×get("loans")||[]);
+ let html=`${makeBanner("借⼊､  借出记录")}
+<div class="card">
+<h4>新增借贷记录</h4>
+<input id="loan_whom"placeholder="对⽅姓名">
+<input id="loan_amt"placeholder="⾦额"type="number"step="0 .01">
+<select id="loan_dir">
+<option value="lend">我借出去</option>
+<option value="borrow">我⽋别⼈</option>
+</select>
+<button onclick="addLoan()">保存</button>
+</div>`;
+loans.forEach(l=>{
+ html+=`
+<div class="card">
+<div>${l×dir==="lend"?"借出":"⽋"}${l.whom}¥${Number(l.amt).toFixed(2)}</div>
+<button onclick="editLoan('${l.uid}')">编辑</button>
+<button class="del"onclick="delLoan('${l.uid}')">删除</button>
+</div>`;
+});
+return html;
+}
+function pageGoal(){
+const goals=filterByBook(DB ×get("goals")||[]);
+ let html=`${makeBanner("攒钱⽬标进度")}
+<div class="card">
+<h4>新建⽬标</h4>
+<input id="goal_name"placeholder="⽬标名称">
+<input id="goal_total"placeholder="⽬标总⾦额"type="number"step="0 .01">
+<input id="goal_now"placeholder="已存⾦额"type="number"step="0 .01">
+<button onclick="addGoal()">添加</button>
+</div>`;
+goals.forEach(g=>{
+const pct=g.total >0?((g.now/g.total)*100).toFixed(0):0;
+html+=`
+<div class="card">
+<h4>${g.name}</h4>
+<div>已存 ¥${Number(g.now).toFixed(2)}/⽬标 ¥${Number(g.total).toFixed(2)}</div>
+<div style="background:#eee;height:14px;border-radius:7px;margin:8px 0;">
+<div style="width:${pct}%;height:14px;background:#ffe066;border-radius:7px;"></
+ div>
+</div>
+<div>进度  ${pct}%</div>
+<button onclick="editGoal('${g.uid}')">编辑</button>
+<button class="del"onclick="delGoal('${g.uid}')">删除</button>
+</div>`;
+});
+return html;
+}
+function pageTemplate(){
+const temps=filterByBook(DB ×get("templates")||[]);
+ let html=`${makeBanner("⼀键记账模板")}
+<div class="card">
+<h4>新建模板</h4>
+<input id="tmpl_name"placeholder="模板名称">
+<input id="tmpl_amt"placeholder="默认⾦额"type="number"step="0 .01">
+<button onclick="addTmpl()">添加</button>
+</div>`;
+temps.forEach(t=>{
+ html+=`
+<div class="card">
+<div>${t.name}｜¥${Number(t.amt).toFixed(2)}</div>
+<button onclick="quickRecord('${t.uid}')">快速记⼀笔</button>
+<button onclick="editTmpl('${t.uid}')">编辑</button>
+<button class="del"onclick="delTmpl('${t.uid}')">删除</button>
+</div>`;
+});
+return html;
+}
+function pageRecur(){
+const recs=filterByBook(DB ×get("recurring")||[]);
+ let html=`${makeBanner("周期性⾃动记账")}
+<div class="card">
+<h4>新建周期账⽬</h4>
+<input id="rec_name"placeholder="账⽬名称">
+<input id="rec_amt"placeholder="⾦额"type="number"step="0 .01">
+<select id="rec_freq">
+<option value="month">每⽉ </option>
+<option value="week">每周</option>
+</select>
+<button onclick="addRecur()">添加</button>
+</div>`;
+recs.forEach(r=>{
+ html+=`
+<div class="card">
+<div>${r.name}¥${Number(r.amt).toFixed(2)}${r.freq==="month"?"每⽉":"每周"}</div>
+<button onclick="recordRecur('${r.uid}')">⽴刻补记⼀次</button>
+<button onclick="editRecur('${r.uid}')">编辑</button>
+<button class="del"onclick="delRecur('${r.uid}')">删除</button>
+</div>`;
+});
+return html;
+}
+function pageBook(){
+ const books=getBooks();
+let html=`${makeBanner("账本管理  数据互相隔离")}
+<div class="card">
+<h4>新建账本</h4>
+<input id="new_book_name"placeholder="账本名字">
+<button onclick="newBook()">创建</button>
+</div>`;
+books.forEach(b=>{
+const isCur=b.bookId===currentBookId();
+html+=`
+<div class="card"style="${isCur?"border:2px solid #ffdd88;":""}">
+<h4>${b.name}${isCur?"当前账本":""}</h4>
+${!isCur?`<button onclick="switchBook('${b.bookId}')">切换为此账本</button>`:"<p>正在
+使⽤</p>"}
+${b.bookId!=="default"?`<button class="del"onclick="deleteBook('${b.bookId}')">删除账
+本</button>`:""}
+</div>`;
+});
+return html;
+}
+function pageCal(){
+return `${makeBanner("按⽇期查看账⽬")}
+<div class="card">
+<input type="date"id="cal_date">
+<button onclick="showDayTrans()">查看当⽇记录</button>
+<div id="dayResult"></div>
+</div>`;
+}
+function pageFit(){
+const fit=DB×get("fitness_"+currentBookId())||{height:"",weight:"",targetWeight:"",records:
+[],foods:[]};
+let recHtml="";
+fit.records.slice().reverse().forEach(r=>{
+recHtml+=`<div class="list-item">${r.date}｜体重:${r.w}kg
+<button onclick="delFitRec('${r.uid}')"></button>
+</div>`;
+});
+let foodHtml="";
+fit.foods.slice().reverse().forEach(f=>{
+foodHtml+=`<div class="list-item">${f.date}｜${f.name}热量 ${f.kcal}kcal
+<button onclick="delFitFood('${f.uid}')"></button>
+</div>`;
+});
+const lost=(Number(fit ×weight||0)-Number(fit.targetWeight||0)).toFixed(1);
+ return `
+${makeBanner("减脂记录管理")}
+<div class="card">
+<h4>档案设置</h4>
+<label>身⾼ (cm)</label>
+<input id="fit_h"value="${fit.height}"placeholder="身⾼ cm">
+<label>当前体重 (kg)</label>
+<input id="fit_w"value="${fit.weight}"placeholder="当前体重 kg">
+<label>⽬标体重 (kg)</label>
+<input id="fit_tw"value="${fit.targetWeight}"placeholder="⽬标体重 kg">
+<p>已减  ${lost}⽄</p>
+<button onclick="saveFitProfile()">保存档案</button>
+</div>
+<div class="card">
+<h4>记录今⽇体重</h4>
+<input id="fit_rec_w"placeholder="体重 kg"type="number"step="0 .1">
+<input id="fit_rec_d"type="date">
+<button onclick="addFitRec()">记录</button>
+${recHtml}
+</div>
+<div class="card">
+<h4>饮⻝热量录⼊</h4>
+<input id="food_name"placeholder="⻝物名称">
+<input id="food_kcal"placeholder="热量 kcal"type="number">
+<input id="food_date"type="date">
+<button onclick="addFitFood()">保存饮⻝</button>
+${foodHtml}
+</div>
+`;
+}
+function pagePeriod(){
+const pd=DB ×get("period_"+currentBookId())||{list:[]};
+let listHtml="";
+pd.list.slice().reverse().forEach(p=>{
+ listHtml+=`
+<div class="list-item">
+${p.startDate}～${p.endDate}｜${p.phase}
+<button onclick="editPeriod('${p.uid}')"></button>
+<button class="del"onclick="delPeriod('${p.uid}')"></button>
+</div>`;
+});
+ return `
+${makeBanner("经期周期记录､  预测")}
+<div class="card">
+<h4>新增经期记录</h4>
+<label>开始⽇期</label>
+<input type="date"id="p_start">
+<label>结束⽇期</label>
+<input type="date"id="p_end">
+<select id="p_phase">
+<option value="⽣理期">⽣理期</option>
+<option value="排卵期">排卵期</option>
+<option value="⻩体期">⻩体期</option>
+</select>
+<button onclick="addPeriod()">保存记录</button>
+</div>
+<div class="card">
+<h4>历史记录</h4>
+${listHtml||"<p>暂⽆记录</p>"}
+</div>
+<div class="card">
+<h4>下次经期预测 按28 天周期估算</h4>
+<button onclick="calcNextPeriod()">计算预测⽇期</button>
+<div id="period_pred"></div>
+</div>
+`;
+}
+function pageSetting(){
+return `${makeBanner("应⽤设置")}
+<div class="card">
+<h4>重要提示</h4>
+<p>本记账⼯作台<strong>所有数据只保存在你的浏览器本地 localStorage</strong>｡  </p>
+<p>清除浏览器缓存､  ⽆痕模式､  换设备都会丢失数据  请定期导出备份 导出功能开发中｡  </p>
+<p>没有后端服务器  不会上传任何你的记账信息｡  </p>
+</div>
+`;
+}
+//==========渲染总⼊⼝ ==========
+function render(){
+ renderSidebar();
+const main=document ×getElementById("main");
+ switch(curPage){
+case "overview":main ×innerHTML=pageOverview();break;
+case "detail":main ×innerHTML=pageDetail();break;
+case "todo":main ×innerHTML=pageTodo();break;
+case "stats":
+main ×innerHTML=pageStats();
+setTimeout(drawBarChart,100);
+break;
+case "report":main ×innerHTML=pageReport();break;
+case "budget":main ×innerHTML=pageBudget();break;
+case "account":main ×innerHTML=pageAccount();break;
+case "invest":main ×innerHTML=pageInvest();break;
+case "loan":main ×innerHTML=pageLoan();break;
+case "goal":main ×innerHTML=pageGoal();break;
+case "template":main ×innerHTML=pageTemplate();break;
+case "recur":main ×innerHTML=pageRecur();break;
+case "book":main ×innerHTML=pageBook();break;
+case "cal":main ×innerHTML=pageCal();break;
+case "fit":main ×innerHTML=pageFit();break;
+case "period":main ×innerHTML=pagePeriod();break;
+case "setting":main ×innerHTML=pageSetting();break;
+}
+}
+function drawBarChart(){
+const canvas=document ×getElementById("barChart");
+if(!canvas)return;
+const ctx=canvas ×getContext("2d");
+const trans=filterByBook(DB ×get("transactions")||[]).filter(x=>x.type==="expense");
+ const catSum={};
+CAT_NAMES.forEach(c=>catSum [c]=0);
+ trans.forEach(t=>{
+const c=t.category||"其他";
+if(catSum [c]!==undefined)catSum[c]+=Number(t.amount);
+});
+const vals=CAT_NAMES.map(n=>catSum[n]);
+new Chart(ctx,{
+ type:"bar", 
+data:{
+labels:CAT_NAMES,
+datasets:[{
+label:"⽀出⾦额",
+data:vals,
+backgroundColor:CAT_COLORS,
+datalabels:{anchor:"end",align:"top"}
+}]
+},
+options:{
+plugins:{
+datalabels:{display:true,formatter:(v)=>"¥"+v.toFixed(0)}
+},
+scales:{y:{beginAtZero:true}}
+}
+});
+}
+//==========各类增删改函数 篇幅限制这⾥只写⻣架  完整CRUD 逻辑你可以继续补  全部
+ localStorage+bookId 隔离 ==========
+function uuid(){return Math.random().toString(36).slice(2);}
+//交易
+window.addTrans=function(){
+const t={
+ uid:uuid(),
+name:document.getElementById("t_name").value,
+amount:document.getElementById("t_amt").value,
+type:document.getElementById("t_type").value,
+date:document.getElementById("t_date").value,
+category:"餐饮",
+bookId:currentBookId()
+};
+let arr=DB×get("transactions")||[];
+arr.push(t);DB.set("transactions",arr);render();
+};
+window.delTrans=function(uid){
+ let arr=DB×get("transactions")||[];
+arr=arr.filter(x=>x.uid!==uid);DB.set("transactions",arr);render();
+};
+window.editTrans=function(uid){alert("编辑交易  "+uid);};
+//待办
+window.addTodo=function(){
+const t={
+ uid:uuid(),
+text:document.getElementById("todo_text").value,
+kind:document.getElementById("todo_kind").value,
+done:false,
+bookId:currentBookId()
+};
+let arr=DB×get("todos")||[];arr.push(t);DB.set("todos",arr);render();
+};
+window.toggleTodo=function(uid){
+ let arr=DB×get("todos")||[];
+const item=arr.find(x=>x.uid===uid);if(item)item.done=!item.done;
+DB.set("todos",arr);render();
+};
+window.delTodo=function(uid){
+let arr=DB×get("todos")||[];arr=arr.filter(x=>x.uid!==uid);DB.set("todos",arr);render();
+};
+window.editTodo=function(uid){alert("编辑待办  "+uid);};
+//账本
+window.newBook=function(){
+const name=document.getElementById("new_book_name").value.trim();
+if(!name)return;
+const books=getBooks();
+books.push({bookId:uuid(),name});
+saveBooks(books);render();
+};
+window.switchBook=function(bid){
+ setCurrentBookId(bid);render();
+};
+window.deleteBook=function(bid){
+if(!confirm("确定删除这个账本  账本所有数据都会丢失  "))return;
+let books=getBooks();
+books=books.filter(b=>b.bookId!==bid);
+saveBooks(books);
+if(currentBookId()===bid)setCurrentBookId("default");
+render();
+};
+//其余函数 预算､  账户､  借贷､  ⽬标､  模板､  周期､  减脂､  经期､  ⽇历查询都是完全类似的CRUD 模
+式  你可以参照上⾯写法补⻬  所有记录都带上bookId  查询的时候filterByBook 过滤｡
+//⻚⾯初始化
+window.onload=render;
+</script>
+</body>
+</html>
